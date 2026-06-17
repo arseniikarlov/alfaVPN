@@ -7,7 +7,30 @@ REALITY_SERVER_NAME="${REALITY_SERVER_NAME:-www.cloudflare.com}"
 REALITY_HANDSHAKE_SERVER="${REALITY_HANDSHAKE_SERVER:-$REALITY_SERVER_NAME}"
 REALITY_HANDSHAKE_PORT="${REALITY_HANDSHAKE_PORT:-443}"
 REALITY_SHORT_ID="${REALITY_SHORT_ID:-e5671ea03f2eccca}"
+REALITY_443_ENABLED="${REALITY_443_ENABLED:-0}"
+REALITY_443_BIND="${REALITY_443_BIND:-127.0.0.1}"
+REALITY_443_PORT="${REALITY_443_PORT:-12053}"
+REALITY_443_SERVER_NAME="${REALITY_443_SERVER_NAME:-www.mozilla.org}"
+REALITY_443_HANDSHAKE_SERVER="${REALITY_443_HANDSHAKE_SERVER:-$REALITY_443_SERVER_NAME}"
+REALITY_443_HANDSHAKE_PORT="${REALITY_443_HANDSHAKE_PORT:-443}"
+REALITY_443_COMPAT_ENABLED="${REALITY_443_COMPAT_ENABLED:-0}"
+REALITY_443_COMPAT_BIND="${REALITY_443_COMPAT_BIND:-127.0.0.1}"
+REALITY_443_COMPAT_PORT="${REALITY_443_COMPAT_PORT:-12054}"
+REALITY_443_COMPAT_SERVER_NAME="${REALITY_443_COMPAT_SERVER_NAME:-www.cloudflare.com}"
+REALITY_443_COMPAT_HANDSHAKE_SERVER="${REALITY_443_COMPAT_HANDSHAKE_SERVER:-$REALITY_443_COMPAT_SERVER_NAME}"
+REALITY_443_COMPAT_HANDSHAKE_PORT="${REALITY_443_COMPAT_HANDSHAKE_PORT:-443}"
+REALITY_GRPC_ENABLED="${REALITY_GRPC_ENABLED:-0}"
+REALITY_GRPC_BIND="${REALITY_GRPC_BIND:-::}"
+REALITY_GRPC_PORT="${REALITY_GRPC_PORT:-22053}"
+REALITY_GRPC_SERVER_NAME="${REALITY_GRPC_SERVER_NAME:-httpredir.debian.org}"
+REALITY_GRPC_HANDSHAKE_SERVER="${REALITY_GRPC_HANDSHAKE_SERVER:-$REALITY_GRPC_SERVER_NAME}"
+REALITY_GRPC_HANDSHAKE_PORT="${REALITY_GRPC_HANDSHAKE_PORT:-443}"
+REALITY_GRPC_SHORT_ID="${REALITY_GRPC_SHORT_ID-}"
+REALITY_GRPC_SERVICE_NAME="${REALITY_GRPC_SERVICE_NAME:-ftp.debian.org}"
+REALITY_GRPC_UUIDS="${REALITY_GRPC_UUIDS:-}"
 VLESS_UUIDS="${VLESS_UUIDS:?VLESS_UUIDS is required}"
+VLESS_COMPAT_UUIDS="${VLESS_COMPAT_UUIDS:-}"
+VLESS_FLOW="${VLESS_FLOW-xtls-rprx-vision}"
 REALITY_PRIVATE_KEY="${REALITY_PRIVATE_KEY:-}"
 REALITY_PUBLIC_KEY="${REALITY_PUBLIC_KEY:-}"
 
@@ -21,6 +44,11 @@ SERVICE_PATH="/etc/systemd/system/sing-box-reality.service"
 
 log() {
   printf '%s\n' "$*"
+}
+
+check_listen() {
+  local port="$1"
+  ss -H -ltn "sport = :${port}" | grep -q .
 }
 
 need_cmd() {
@@ -101,11 +129,25 @@ chmod 600 "$PRIVATE_KEY_PATH"
 chmod 644 "$PUBLIC_KEY_PATH"
 
 USERS_JSON="$(
-  VLESS_UUIDS="$VLESS_UUIDS" python3 - <<'PY'
+  VLESS_UUIDS="$VLESS_UUIDS" VLESS_COMPAT_UUIDS="$VLESS_COMPAT_UUIDS" VLESS_FLOW="$VLESS_FLOW" python3 - <<'PY'
 import json
 import os
 
 uuids = [x.strip() for x in os.environ["VLESS_UUIDS"].split(",") if x.strip()]
+compat_uuids = [x.strip() for x in os.environ.get("VLESS_COMPAT_UUIDS", "").split(",") if x.strip()]
+flow = os.environ.get("VLESS_FLOW", "xtls-rprx-vision")
+users = [{"uuid": uuid, **({"flow": flow} if flow else {})} for uuid in uuids]
+users.extend({"uuid": uuid} for uuid in compat_uuids)
+print(json.dumps(users, ensure_ascii=True))
+PY
+)"
+
+GRPC_USERS_JSON="$(
+  REALITY_GRPC_UUIDS="$REALITY_GRPC_UUIDS" python3 - <<'PY'
+import json
+import os
+
+uuids = [x.strip() for x in os.environ.get("REALITY_GRPC_UUIDS", "").split(",") if x.strip()]
 print(json.dumps([{"uuid": uuid} for uuid in uuids], ensure_ascii=True))
 PY
 )"
@@ -115,35 +157,139 @@ REALITY_SERVER_NAME="$REALITY_SERVER_NAME" \
 REALITY_HANDSHAKE_SERVER="$REALITY_HANDSHAKE_SERVER" \
 REALITY_HANDSHAKE_PORT="$REALITY_HANDSHAKE_PORT" \
 REALITY_SHORT_ID="$REALITY_SHORT_ID" \
+REALITY_443_ENABLED="$REALITY_443_ENABLED" \
+REALITY_443_BIND="$REALITY_443_BIND" \
+REALITY_443_PORT="$REALITY_443_PORT" \
+REALITY_443_SERVER_NAME="$REALITY_443_SERVER_NAME" \
+REALITY_443_HANDSHAKE_SERVER="$REALITY_443_HANDSHAKE_SERVER" \
+REALITY_443_HANDSHAKE_PORT="$REALITY_443_HANDSHAKE_PORT" \
+REALITY_443_COMPAT_ENABLED="$REALITY_443_COMPAT_ENABLED" \
+REALITY_443_COMPAT_BIND="$REALITY_443_COMPAT_BIND" \
+REALITY_443_COMPAT_PORT="$REALITY_443_COMPAT_PORT" \
+REALITY_443_COMPAT_SERVER_NAME="$REALITY_443_COMPAT_SERVER_NAME" \
+REALITY_443_COMPAT_HANDSHAKE_SERVER="$REALITY_443_COMPAT_HANDSHAKE_SERVER" \
+REALITY_443_COMPAT_HANDSHAKE_PORT="$REALITY_443_COMPAT_HANDSHAKE_PORT" \
+REALITY_GRPC_ENABLED="$REALITY_GRPC_ENABLED" \
+REALITY_GRPC_BIND="$REALITY_GRPC_BIND" \
+REALITY_GRPC_PORT="$REALITY_GRPC_PORT" \
+REALITY_GRPC_SERVER_NAME="$REALITY_GRPC_SERVER_NAME" \
+REALITY_GRPC_HANDSHAKE_SERVER="$REALITY_GRPC_HANDSHAKE_SERVER" \
+REALITY_GRPC_HANDSHAKE_PORT="$REALITY_GRPC_HANDSHAKE_PORT" \
+REALITY_GRPC_SHORT_ID="$REALITY_GRPC_SHORT_ID" \
+REALITY_GRPC_SERVICE_NAME="$REALITY_GRPC_SERVICE_NAME" \
 REALITY_PRIVATE_KEY="$REALITY_PRIVATE_KEY" \
 USERS_JSON="$USERS_JSON" \
+GRPC_USERS_JSON="$GRPC_USERS_JSON" \
 python3 - <<'PY' > "$CONFIG_PATH"
 import json
 import os
 
-config = {
-    "log": {"level": "warn"},
-    "inbounds": [
+users = json.loads(os.environ["USERS_JSON"])
+grpc_users = json.loads(os.environ["GRPC_USERS_JSON"])
+
+inbounds = [
+    {
+        "type": "vless",
+        "listen": "::",
+        "listen_port": int(os.environ["PUBLIC_PORT"]),
+        "tls": {
+            "enabled": True,
+            "server_name": os.environ["REALITY_SERVER_NAME"],
+            "reality": {
+                "enabled": True,
+                "handshake": {
+                    "server": os.environ["REALITY_HANDSHAKE_SERVER"],
+                    "server_port": int(os.environ["REALITY_HANDSHAKE_PORT"]),
+                },
+                "private_key": os.environ["REALITY_PRIVATE_KEY"],
+                "short_id": [os.environ["REALITY_SHORT_ID"]],
+            },
+        },
+        "users": users,
+    }
+]
+
+if os.environ.get("REALITY_443_ENABLED") == "1":
+    inbounds.append(
         {
             "type": "vless",
-            "listen": "::",
-            "listen_port": int(os.environ["PUBLIC_PORT"]),
+            "listen": os.environ["REALITY_443_BIND"],
+            "listen_port": int(os.environ["REALITY_443_PORT"]),
             "tls": {
                 "enabled": True,
-                "server_name": os.environ["REALITY_SERVER_NAME"],
+                "server_name": os.environ["REALITY_443_SERVER_NAME"],
                 "reality": {
                     "enabled": True,
                     "handshake": {
-                        "server": os.environ["REALITY_HANDSHAKE_SERVER"],
-                        "server_port": int(os.environ["REALITY_HANDSHAKE_PORT"]),
+                        "server": os.environ["REALITY_443_HANDSHAKE_SERVER"],
+                        "server_port": int(os.environ["REALITY_443_HANDSHAKE_PORT"]),
                     },
                     "private_key": os.environ["REALITY_PRIVATE_KEY"],
                     "short_id": [os.environ["REALITY_SHORT_ID"]],
                 },
             },
-            "users": json.loads(os.environ["USERS_JSON"]),
+            "users": users,
+            "tag": "vless-reality-443",
         }
-    ],
+    )
+
+if os.environ.get("REALITY_443_COMPAT_ENABLED") == "1":
+    inbounds.append(
+        {
+            "type": "vless",
+            "listen": os.environ["REALITY_443_COMPAT_BIND"],
+            "listen_port": int(os.environ["REALITY_443_COMPAT_PORT"]),
+            "tls": {
+                "enabled": True,
+                "server_name": os.environ["REALITY_443_COMPAT_SERVER_NAME"],
+                "reality": {
+                    "enabled": True,
+                    "handshake": {
+                        "server": os.environ["REALITY_443_COMPAT_HANDSHAKE_SERVER"],
+                        "server_port": int(os.environ["REALITY_443_COMPAT_HANDSHAKE_PORT"]),
+                    },
+                    "private_key": os.environ["REALITY_PRIVATE_KEY"],
+                    "short_id": [os.environ["REALITY_SHORT_ID"]],
+                },
+            },
+            "users": users,
+            "tag": "vless-reality-443-compat",
+        }
+    )
+
+if os.environ.get("REALITY_GRPC_ENABLED") == "1":
+    if not grpc_users:
+        raise SystemExit("REALITY_GRPC_UUIDS is required when REALITY_GRPC_ENABLED=1")
+    inbounds.append(
+        {
+            "type": "vless",
+            "listen": os.environ["REALITY_GRPC_BIND"],
+            "listen_port": int(os.environ["REALITY_GRPC_PORT"]),
+            "tls": {
+                "enabled": True,
+                "server_name": os.environ["REALITY_GRPC_SERVER_NAME"],
+                "reality": {
+                    "enabled": True,
+                    "handshake": {
+                        "server": os.environ["REALITY_GRPC_HANDSHAKE_SERVER"],
+                        "server_port": int(os.environ["REALITY_GRPC_HANDSHAKE_PORT"]),
+                    },
+                    "private_key": os.environ["REALITY_PRIVATE_KEY"],
+                    "short_id": [os.environ["REALITY_GRPC_SHORT_ID"]],
+                },
+            },
+            "transport": {
+                "type": "grpc",
+                "service_name": os.environ["REALITY_GRPC_SERVICE_NAME"],
+            },
+            "users": grpc_users,
+            "tag": "vless-reality-grpc",
+        }
+    )
+
+config = {
+    "log": {"level": "warn"},
+    "inbounds": inbounds,
     "outbounds": [{"type": "direct"}],
 }
 
@@ -181,6 +327,9 @@ SERVICE
 if command -v ufw >/dev/null 2>&1; then
   if ufw status 2>/dev/null | grep -q "Status: active"; then
     ufw allow "${PUBLIC_PORT}/tcp" >/dev/null 2>&1 || true
+    if [ "$REALITY_GRPC_ENABLED" = "1" ]; then
+      ufw allow "${REALITY_GRPC_PORT}/tcp" >/dev/null 2>&1 || true
+    fi
   fi
 fi
 
@@ -189,7 +338,19 @@ systemctl enable --now sing-box-reality.service
 systemctl restart sing-box-reality.service
 sleep 2
 systemctl --no-pager --full status sing-box-reality.service
-ss -ltn | grep -q ":${PUBLIC_PORT} "
+check_listen "$PUBLIC_PORT"
+
+if [ "$REALITY_443_ENABLED" = "1" ]; then
+  check_listen "$REALITY_443_PORT"
+fi
+
+if [ "$REALITY_443_COMPAT_ENABLED" = "1" ]; then
+  check_listen "$REALITY_443_COMPAT_PORT"
+fi
+
+if [ "$REALITY_GRPC_ENABLED" = "1" ]; then
+  check_listen "$REALITY_GRPC_PORT"
+fi
 
 log ""
 log "Reality public key:"
